@@ -5,6 +5,20 @@ var Emitter = require("events").EventEmitter;
 var sinon = require("sinon");
 var SparkAPIVariable = {cmd: "VarReturn", result: "127.0.0.1:48879"};
 
+
+function restore(target) {
+  for (var prop in target) {
+    if (target[prop] != null &&
+        typeof target[prop].restore === "function") {
+      target[prop].restore();
+    }
+    if (typeof target[prop] === "object") {
+      restore(target[prop]);
+    }
+  }
+}
+
+
 function State() {
   this.isConnected = false;
   this.isReading = false;
@@ -15,6 +29,11 @@ function State() {
   this.server = {};
   this.socket = new Emitter();
   this.socket.write = function() {};
+  this.rgb = {
+    red: null,
+    green: null,
+    blue: null
+  };
 }
 
 sinon.stub(Spark.Client, "create", function(spark, onCreated) {
@@ -78,10 +97,7 @@ exports["Spark"] = {
     done();
   },
   tearDown: function(done) {
-    this.connect.restore();
-    this.map.restore();
-    this.socketwrite.restore();
-    this.clock.restore();
+    restore(this);
     done();
   },
   shape: function(test) {
@@ -208,11 +224,7 @@ exports["Spark"] = {
       done();
     },
     tearDown: function(done) {
-      this.connect.restore();
-      this.map.restore();
-      this.socketwrite.restore();
-      this.clock.restore();
-
+      restore(this);
       done();
     }
   };
@@ -341,10 +353,7 @@ exports["Spark.prototype.servoWrite"] = {
     done();
   },
   tearDown: function(done) {
-    this.connect.restore();
-    this.map.restore();
-    this.socketwrite.restore();
-    this.clock.restore();
+    restore(this);
     done();
   },
   analogWriteToDigital: function(test) {
@@ -428,11 +437,7 @@ exports["Spark.prototype.pinMode"] = {
     done();
   },
   tearDown: function(done) {
-    this.connect.restore();
-    this.map.restore();
-    this.socketwrite.restore();
-    this.clock.restore();
-
+    restore(this);
     done();
   },
   analogOutput: function(test) {
@@ -700,6 +705,245 @@ exports["Spark.prototype.pinMode"] = {
     } catch(e) {
       test.ok(true);
     }
+
+    test.done();
+  }
+};
+
+exports["Spark.prototype.internalRGB"] = {
+  setUp: function(done) {
+
+    this.clock = sinon.useFakeTimers();
+    this.state = new State();
+    this.map = sinon.stub(Map.prototype, "get").returns(this.state);
+    this.socketwrite = sinon.spy(this.state.socket, "write");
+    this.connect = sinon.stub(Spark.prototype, "connect", function(handler) {
+      handler(null, {cmd: "VarReturn", result: "127.0.0.1:48879"});
+    });
+
+    this.spark = new Spark({
+      token: "token",
+      deviceId: "deviceId"
+    });
+
+    done();
+  },
+  tearDown: function(done) {
+    restore(this);
+    done();
+  },
+
+  get: function(test) {
+    test.expect(3);
+
+    test.deepEqual(this.spark.internalRGB(), {
+      red: null, green: null, blue: null
+    });
+    test.ok(this.socketwrite.notCalled);
+
+    this.spark.internalRGB(10, 20, 30);
+    test.deepEqual(this.spark.internalRGB(), {
+      red: 10, green: 20, blue: 30
+    });
+
+    test.done();
+  },
+
+  setReturnsThis: function(test) {
+    test.expect(1);
+
+    test.equal(this.spark.internalRGB(0, 0, 0), this.spark);
+    test.done();
+  },
+
+  setWithThreeArgs: function(test) {
+    test.expect(6);
+
+    this.spark.internalRGB(0, 0, 0);
+
+    test.ok(this.socketwrite.called);
+
+    var buffer = this.socketwrite.getCall(0).args[0];
+
+    test.equal(buffer.readUInt8(0), 0x07);
+    test.equal(buffer.readUInt8(1), 0);
+    test.equal(buffer.readUInt8(2), 0);
+    test.equal(buffer.readUInt8(3), 0);
+
+    test.deepEqual(this.spark.internalRGB(), {
+      red: 0, green: 0, blue: 0
+    });
+
+    test.done();
+  },
+
+  setWithArrayOfThreeBytes: function(test) {
+    test.expect(6);
+
+    this.spark.internalRGB([0, 0, 0]);
+
+    test.ok(this.socketwrite.called);
+
+    var buffer = this.socketwrite.getCall(0).args[0];
+
+    test.equal(buffer.readUInt8(0), 0x07);
+    test.equal(buffer.readUInt8(1), 0);
+    test.equal(buffer.readUInt8(2), 0);
+    test.equal(buffer.readUInt8(3), 0);
+
+    test.deepEqual(this.spark.internalRGB(), {
+      red: 0, green: 0, blue: 0
+    });
+
+    test.done();
+  },
+
+  setWithObjectContainingPropertiesRGB: function(test) {
+    test.expect(6);
+
+    this.spark.internalRGB({
+      red: 0, green: 0, blue: 0
+    });
+
+    test.ok(this.socketwrite.called);
+
+    var buffer = this.socketwrite.getCall(0).args[0];
+
+    test.equal(buffer.readUInt8(0), 0x07);
+    test.equal(buffer.readUInt8(1), 0);
+    test.equal(buffer.readUInt8(2), 0);
+    test.equal(buffer.readUInt8(3), 0);
+
+    test.deepEqual(this.spark.internalRGB(), {
+      red: 0, green: 0, blue: 0
+    });
+
+    test.done();
+  },
+
+  setWithHexString: function(test) {
+    test.expect(6);
+
+    this.spark.internalRGB("#000000");
+
+    test.ok(this.socketwrite.called);
+
+    var buffer = this.socketwrite.getCall(0).args[0];
+
+    test.equal(buffer.readUInt8(0), 0x07);
+    test.equal(buffer.readUInt8(1), 0);
+    test.equal(buffer.readUInt8(2), 0);
+    test.equal(buffer.readUInt8(3), 0);
+
+    test.deepEqual(this.spark.internalRGB(), {
+      red: 0, green: 0, blue: 0
+    });
+
+    test.done();
+  },
+
+  setWithHexStringNoPrefix: function(test) {
+    test.expect(6);
+
+    this.spark.internalRGB("000000");
+
+    test.ok(this.socketwrite.called);
+
+    var buffer = this.socketwrite.getCall(0).args[0];
+
+    test.equal(buffer.readUInt8(0), 0x07);
+    test.equal(buffer.readUInt8(1), 0);
+    test.equal(buffer.readUInt8(2), 0);
+    test.equal(buffer.readUInt8(3), 0);
+
+    test.deepEqual(this.spark.internalRGB(), {
+      red: 0, green: 0, blue: 0
+    });
+
+    test.done();
+  },
+
+  setConstrainsValues: function(test) {
+    test.expect(6);
+
+    this.spark.internalRGB(300, -1, 256);
+
+    test.ok(this.socketwrite.called);
+
+    var buffer = this.socketwrite.getCall(0).args[0];
+
+    test.equal(buffer.readUInt8(0), 0x07);
+    test.equal(buffer.readUInt8(1), 255);
+    test.equal(buffer.readUInt8(2), 0);
+    test.equal(buffer.readUInt8(3), 255);
+
+    test.deepEqual(this.spark.internalRGB(), {
+      red: 255, green: 0, blue: 255
+    });
+
+    test.done();
+  },
+
+  setBadValues: function(test) {
+    var spark = this.spark;
+
+    test.expect(14);
+
+    // null
+    test.throws(function() {
+      spark.internalRGB(null);
+    });
+
+    // shorthand not supported
+    test.throws(function() {
+      spark.internalRGB("#fff");
+    });
+
+    // bad hex
+    test.throws(function() {
+      spark.internalRGB("#ggffff");
+    });
+    test.throws(function() {
+      spark.internalRGB("#ggffffff");
+    });
+    test.throws(function() {
+      spark.internalRGB("#ffffffff");
+    });
+
+    // by params
+    test.throws(function() {
+      spark.internalRGB(10, 20, null);
+    });
+    test.throws(function() {
+      spark.internalRGB(10, 20);
+    });
+    test.throws(function() {
+      spark.internalRGB(10, undefined, 30);
+    });
+
+
+    // by array
+    test.throws(function() {
+      spark.internalRGB([10, 20, null]);
+    });
+    test.throws(function() {
+      spark.internalRGB([10, undefined, 30]);
+    });
+    test.throws(function() {
+      spark.internalRGB([10, 20]);
+    });
+
+    // by object
+    test.throws(function() {
+      spark.internalRGB({red: 255, green: 100});
+    });
+    test.throws(function() {
+      spark.internalRGB({red: 255, green: 100, blue: null});
+    });
+    test.throws(function() {
+      spark.internalRGB({red: 255, green: 100, blue: undefined});
+    });
+
 
     test.done();
   }
