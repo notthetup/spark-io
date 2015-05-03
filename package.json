@@ -37,7 +37,8 @@
   "dependencies": {
     "array-includes": "latest",
     "es6-shim": "latest",
-    "nanotimer": "0.3.0"
+    "nanotimer": "0.3.0",
+    "multicast-dns": "latest"
   },
   "devDependencies": {
     "sinon": "~1.7.3",
